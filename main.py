@@ -1,16 +1,30 @@
-# This is a sample Python script.
+import telebot
+import psycopg2
 
-# Press ⌃R to execute it or replace it with your code.
-# Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
+token = '6453195049:AAGEqatrSVgw_SDMngQxy2bz3gvMO9B2mUc'
+bot = telebot.TeleBot(token)
+conn = psycopg2.connect(dbname="tg", host="localhost", user="postgres", password="postgrespw", port="32769")
+cursor = conn.cursor()
+conn.autocommit = True
 
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press ⌘F8 to toggle the breakpoint.
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    user = message.from_user
+
+    user_id = user.id
+    user_username = user.username
+    user = (user_username,user_id)
+    cursor.execute("INSERT INTO users (username, tgid) VALUES (%s, %s)", user)
 
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
+    response = (
+        f"регистрация прошла успешно {user_id}\n"
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    )
+
+    bot.reply_to(message, response)
+
+
+
+bot.infinity_polling()
