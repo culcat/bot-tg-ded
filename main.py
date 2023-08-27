@@ -1,4 +1,6 @@
 import secrets
+import time
+
 import telebot
 import psycopg2
 from telebot import types
@@ -6,6 +8,13 @@ from telebot import types
 conn = psycopg2.connect(dbname="tg", host="localhost", user="postgres", password="postgrespw", port="32770")
 cursor = conn.cursor()
 conn.autocommit = True
+
+
+def refresh_cursor():
+    global cursor
+    cursor.close()
+    cursor = conn.cursor()
+
 
 cursor.execute("SELECT botkey FROM botsettings where botsettingid = 1")
 token_row = cursor.fetchone()
@@ -18,6 +27,8 @@ adminToken = str(adminToken_row[0])
 cursor.execute("SELECT adminuserid FROM botsettings where botsettingid = 2")
 adminUserId_row = cursor.fetchone()
 adminUserID = str(adminUserId_row[0])
+
+
 def create_keyboard():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     button_invite = types.KeyboardButton('/invite')
@@ -25,6 +36,8 @@ def create_keyboard():
     button_withdraw = types.KeyboardButton('/withdraw')
     keyboard.add(button_invite, button_balance, button_withdraw)
     return keyboard
+
+
 @bot.message_handler(commands=['invite'])
 def invite_message(message):
     user = message.from_user
@@ -34,9 +47,13 @@ def invite_message(message):
 
     # Сохраняем токен и информацию о пригласившем пользователе
     cursor.execute("INSERT INTO invitations (token, inviteruserid) VALUES (%s, %s)", (invite_token, user.id))
-    conn.commit()
 
-    invite_link = f"https://t.me/itDeadTgBot?start={invite_token}"
+    conn.commit()
+    cursor.execute("SELECT linkbot FROM botsettings where botsettingid = 2")
+    link = cursor.fetchone()
+    linkbot = (link[0])
+
+    invite_link = f"{linkbot}?start={invite_token}"
     response = f"Ваша ссылка для приглашения: {invite_link}"
     bot.reply_to(message, response)
 
@@ -60,8 +77,6 @@ def start_message(message):
         cursor.execute("INSERT INTO users (username, tgid) VALUES (%s, %s)", user)
         response = "Вы успешно зарегистрированы."
         bot.reply_to(message, response)
-
-
 
     # Извлекаем токен из команды /start
     invite_token = message.text.split('/start ')[-1]
@@ -106,7 +121,6 @@ def start_message(message):
     bot.reply_to(message, response)
 
 
-
 @bot.message_handler(commands=['withdraw'])
 def withdraw_request(message):
     user = message.from_user
@@ -123,6 +137,7 @@ def withdraw_request(message):
             bot.reply_to(message, "У вас недостаточно средств для вывода баланса.")
     else:
         bot.reply_to(message, "Пользователь не найден в базе данных.")
+
 
 @bot.message_handler(func=lambda message: True)
 def process_withdrawal(message):
@@ -149,16 +164,37 @@ def process_withdrawal(message):
 
                 bot.send_message(user_id, "Заявка на вывод отправлена администратору. Ваш баланс обновлен.")
             else:
-                bot.send_message(user_id, "Недостаточно средств для вывода указанной суммы или сумма меньше минимальной (500).")
+                bot.send_message(user_id,
+                                 "Недостаточно средств для вывода указанной суммы или сумма меньше минимальной (500).")
         else:
             bot.send_message(user_id, "Пользователь не найден в базе данных.")
     except ValueError:
         user_id = message.from_user.id
         bot.send_message(user_id, "Введите корректную сумму.")
 
+
 # Функция для отправки уведомления админу
 def send_admin_notification(message):
     admin_bot = telebot.TeleBot(adminToken)
     admin_user_id = adminUserID
     admin_bot.send_message(admin_user_id, message)
+
+
+refresh_interval = 1800
+
+last_refresh_time = time.time()
+
+
+@bot.message_handler(commands=['start', 'invite', 'balance', 'withdraw'])
+def handle_commands(message):
+    global last_refresh_time
+
+    current_time = time.time()
+    if current_time - last_refresh_time >= refresh_interval:
+        refresh_cursor()
+        last_refresh_time = current_time
+
+    bot.reply_to(message, "Command received.")
+
+
 bot.infinity_polling()
