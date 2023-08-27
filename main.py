@@ -1,5 +1,4 @@
 import secrets
-
 import telebot
 import psycopg2
 
@@ -41,12 +40,22 @@ def start_message(message):
         response = "Вы уже зарегистрированы."
         bot.reply_to(message, response)
         return
+    else:
+        user_id = user.id
+        user_username = user.username
+        user = (user_username, user_id)
+        cursor.execute("INSERT INTO users (username, tgid) VALUES (%s, %s)", user)
+        response = "Вы успешно зарегистрированы."
+        bot.reply_to(message, response)
+
+
 
     # Извлекаем токен из команды /start
     invite_token = message.text.split('/start ')[-1]
     # Поиск пригласившего пользователя по токену
     cursor.execute("SELECT inviteruserid FROM invitations WHERE token = %s", (invite_token,))
     inviter_row = cursor.fetchone()
+    user = message.from_user
 
     if inviter_row:
         inviter_id = inviter_row[0]
