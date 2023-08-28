@@ -1,3 +1,4 @@
+import asyncio
 import typing
 
 import pyrogram
@@ -9,19 +10,19 @@ class Channel:
         self.name: str = session_file_name
         self.chat_id: str or int = -1001962381384
 
-    def create_link(self) -> str:
-        with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
-            obj_link: pyrogram.types.ChatInviteLink = app.create_chat_invite_link(self.chat_id)
+    async def create_link(self) -> str:
+        async with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
+            obj_link: pyrogram.types.ChatInviteLink = await app.create_chat_invite_link(self.chat_id)
             return obj_link.invite_link
 
-    def get_link_count_join(self, link: str) -> int:
-        with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
-            obj_link: pyrogram.types.ChatInviteLink = app.get_chat_invite_link(self.chat_id, link)
+    async def get_link_count_join(self, link: str) -> int:
+        async with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
+            obj_link: pyrogram.types.ChatInviteLink = await app.get_chat_invite_link(self.chat_id, link)
             return obj_link.member_count
 
 
-# info = Channel("aleksandrkrainukov").get_link_count_join('https://t.me/+KhNFXe6DwGEwZTIy')
-# new_link = Channel('rolakov').create_link()
+# info = asyncio.run(Channel("rolakov").get_link_count_join('https://t.me/+KhNFXe6DwGEwZTIy'))
+# new_link = asyncio.run(Channel('rolakov').create_link())
 #
 # print(info)
 # print(new_link)
