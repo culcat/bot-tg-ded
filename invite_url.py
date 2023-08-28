@@ -10,14 +10,18 @@ class Channel:
         self.chat_id: str or int = -1001962381384
 
     def create_link(self) -> str:
-        with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
-            obj_link: pyrogram.types.ChatInviteLink = app.create_chat_invite_link(self.chat_id)
-            return obj_link.invite_link
+        app = pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name)
+        app.start()
+        obj_link: pyrogram.types.ChatInviteLink = app.create_chat_invite_link(self.chat_id)
+        app.stop()
+        return obj_link.invite_link
 
     def get_link_count_join(self, link: str) -> int:
-        with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
-            obj_link: pyrogram.types.ChatInviteLink = app.get_chat_invite_link(self.chat_id, link)
-            return obj_link.member_count
+        app = pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name)
+        app.start()
+        obj_link: pyrogram.types.ChatInviteLink = app.get_chat_invite_link(self.chat_id, link)
+        app.stop()
+        return obj_link.member_count
 
 
 # info = Channel("rolakov").get_link_count_join('https://t.me/+KhNFXe6DwGEwZTIy')
