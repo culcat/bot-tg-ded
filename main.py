@@ -75,11 +75,13 @@ def start_message(message):
     user = message.from_user
     user_id = user.id
     user_username = user.username
+    cursor.execute("SELECT reward FROM rewards WHERE id =%s ", 1)
+    reward = cursor.fetchone()
     cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
     balance_row = cursor.fetchone()
     cursor.execute("SELECT joinedusers FROM referals WHERE idinviter = %s", (str(user_id),))
     invited_count =cursor.fetchone()
-    plus_balance = balance_row+invited_count
+    plus_balance = balance_row+invited_count*reward
     cursor.execute("UPDATE users SET balance = %s WHERE tgid = %s", (plus_balance, str(user_id)))
 
 
