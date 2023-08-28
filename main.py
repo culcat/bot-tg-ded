@@ -1,7 +1,6 @@
 import secrets
 import time
-from http import client
-
+import invite_url
 import telebot
 import psycopg2
 from telebot import types
@@ -10,7 +9,6 @@ from telebot.apihelper import create_chat_invite_link
 conn = psycopg2.connect(dbname="tg", host="localhost", user="postgres", password="postgrespw", port="32770")
 cursor = conn.cursor()
 conn.autocommit = True
-
 def refresh_cursor():
     global cursor
     cursor.close()
@@ -29,7 +27,6 @@ cursor.execute("SELECT adminuserid FROM botsettings where botsettingid = 2")
 adminUserId_row = cursor.fetchone()
 adminUserID = str(adminUserId_row[0])
 
-print(bot.get_chat_member("-1001962381384",326646054))
 
 
 def create_keyboard():
@@ -41,39 +38,21 @@ def create_keyboard():
     return keyboard
 
 
-referral_dict = {}
+
 @bot.message_handler(commands=['invite'])
 def generate_invite_link(message):
     user_id = message.from_user.id
-
-
-    invite_link = bot.create_chкat_invite_link(channel_id, member_limit=1)
-
+    invite_link = invite_url.Channel('aleksandrkrainukov').create_link()
     # Запись информации о пригласившем пользователе в базу данных
-    cursor.execute("INSERT INTO referrals (inviter_tgid, referral_tgid) VALUES (%s, NULL)", (str(user_id),))
+    cursor.execute("INSERT INTO referals (invitelink,idinviter ) VALUES (%s, %s)", invite_link,(str(user_id)))
     conn.commit()
 
-    bot.send_message(user_id, f"Приглашение в канал: {invite_link.invite_link}")
+    bot.send_message(user_id, f"Приглашение в канал: {invite_link}")
 
 
 
 
-@bot.message_handler(func=lambda message: message.text.startswith('/start '))
-def handle_referral(message):
-    user_id = message.from_user.id
-    referral_code = message.text.split('/start ')[1]  # Извлечение кода реферала из текста сообщения
 
-    # Проверка, есть ли такой код реферала в словаре и получение идентификатора пригласившего пользователя
-    if referral_code in referral_dict:
-        inviter_id = referral_dict[referral_code]
-
-        # Запись информации о реферале и пригласившем пользователе в базу данных
-        cursor.execute("INSERT INTO referrals (inviter_tgid, referral_tgid) VALUES (%s, %s)", (inviter_id, user_id))
-        conn.commit()
-
-        bot.send_message(user_id, f"Вы были приглашены пользователем с ID {inviter_id}. Добро пожаловать!")
-    else:
-        bot.send_message(user_id, "Неверный код реферала. Пожалуйста, используйте корректную ссылку для приглашения.")
 
 
 @bot.message_handler(commands=['start'])
@@ -94,11 +73,16 @@ def handle_start(message):
 @bot.message_handler(commands=['balance'])
 def start_message(message):
     user = message.from_user
-
     user_id = user.id
     user_username = user.username
     cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
     balance_row = cursor.fetchone()
+    cursor.execute("SELECT joinedusers FROM referals WHERE idinviter = %s", (str(user_id),))
+    invited_count =cursor.fetchone()
+    plus_balance = balance_row+invited_count
+    cursor.execute("UPDATE users SET balance = %s WHERE tgid = %s", (plus_balance, str(user_id)))
+
+
 
     if balance_row:
         balance = balance_row[0]
@@ -114,6 +98,7 @@ def withdraw_request(message):
     user = message.from_user
     user_id = user.id
     cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
+
     balance_row = cursor.fetchone()
 
     if balance_row:
@@ -184,4 +169,4 @@ def handle_commands(message):
     bot.reply_to(message, "Command received.")
 
 
-#bot.infinity_polling()
+bot.infinity_polling()
