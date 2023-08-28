@@ -1,14 +1,15 @@
 import secrets
 import time
+from http import client
 
 import telebot
 import psycopg2
 from telebot import types
+from telebot.apihelper import create_chat_invite_link
 
 conn = psycopg2.connect(dbname="tg", host="localhost", user="postgres", password="postgrespw", port="32770")
 cursor = conn.cursor()
 conn.autocommit = True
-
 
 def refresh_cursor():
     global cursor
@@ -20,13 +21,15 @@ cursor.execute("SELECT botkey FROM botsettings where botsettingid = 1")
 token_row = cursor.fetchone()
 token = str(token_row[0])
 bot = telebot.TeleBot(token)
-
+channel_id = '-1001962381384'
 cursor.execute("SELECT botkey FROM botsettings where botsettingid = 2")
 adminToken_row = cursor.fetchone()
 adminToken = str(adminToken_row[0])
 cursor.execute("SELECT adminuserid FROM botsettings where botsettingid = 2")
 adminUserId_row = cursor.fetchone()
 adminUserID = str(adminUserId_row[0])
+
+print(bot.get_chat_member("-1001962381384",326646054))
 
 
 def create_keyboard():
@@ -38,69 +41,54 @@ def create_keyboard():
     return keyboard
 
 
+referral_dict = {}
 @bot.message_handler(commands=['invite'])
-def invite_message(message):
-    user = message.from_user
+def generate_invite_link(message):
+    user_id = message.from_user.id
 
-    # Генерируем уникальный токен для приглашения
-    invite_token = secrets.token_urlsafe(16)
 
-    # Сохраняем токен и информацию о пригласившем пользователе
-    cursor.execute("INSERT INTO invitations (token, inviteruserid) VALUES (%s, %s)", (invite_token, user.id))
+    invite_link = bot.create_chкat_invite_link(channel_id, member_limit=1)
 
+    # Запись информации о пригласившем пользователе в базу данных
+    cursor.execute("INSERT INTO referrals (inviter_tgid, referral_tgid) VALUES (%s, NULL)", (str(user_id),))
     conn.commit()
-    cursor.execute("SELECT linkbot FROM botsettings where botsettingid = 2")
-    link = cursor.fetchone()
-    linkbot = (link[0])
 
-    invite_link = f"{linkbot}?start={invite_token}"
-    response = f"Ваша ссылка для приглашения: {invite_link}"
-    bot.reply_to(message, response)
+    bot.send_message(user_id, f"Приглашение в канал: {invite_link.invite_link}")
+
+
+
+
+@bot.message_handler(func=lambda message: message.text.startswith('/start '))
+def handle_referral(message):
+    user_id = message.from_user.id
+    referral_code = message.text.split('/start ')[1]  # Извлечение кода реферала из текста сообщения
+
+    # Проверка, есть ли такой код реферала в словаре и получение идентификатора пригласившего пользователя
+    if referral_code in referral_dict:
+        inviter_id = referral_dict[referral_code]
+
+        # Запись информации о реферале и пригласившем пользователе в базу данных
+        cursor.execute("INSERT INTO referrals (inviter_tgid, referral_tgid) VALUES (%s, %s)", (inviter_id, user_id))
+        conn.commit()
+
+        bot.send_message(user_id, f"Вы были приглашены пользователем с ID {inviter_id}. Добро пожаловать!")
+    else:
+        bot.send_message(user_id, "Неверный код реферала. Пожалуйста, используйте корректную ссылку для приглашения.")
 
 
 @bot.message_handler(commands=['start'])
-def start_message(message):
-    user = message.from_user
-
-    # Проверка, не зарегистрирован ли пользователь уже
-    cursor.execute("SELECT tgid FROM users WHERE tgid = %s", (str(user.id),))
-    registered_user = cursor.fetchone()
-
-    if registered_user:
-        response = "Вы уже зарегистрированы."
-        bot.reply_to(message, response)
-        return
+def handle_start(message):
+    user_id = message.from_user.id
+    username = message.from_user.username
+    # Проверка, зарегистрирован ли пользователь уже
+    cursor.execute("SELECT * FROM users WHERE tgid = %s", (str(user_id),))
+    if cursor.fetchone():
+        bot.send_message(user_id, "Вы уже зарегистрированы.")
     else:
-        user_id = user.id
-        user_username = user.username
-        user = (user_username, user_id)
-        cursor.execute("INSERT INTO users (username, tgid) VALUES (%s, %s)", user)
-        response = "Вы успешно зарегистрированы."
-        bot.reply_to(message, response)
-
-    # Извлекаем токен из команды /start
-    invite_token = message.text.split('/start ')[-1]
-    # Поиск пригласившего пользователя по токену
-    cursor.execute("SELECT inviteruserid FROM invitations WHERE token = %s", (invite_token,))
-    inviter_row = cursor.fetchone()
-    user = message.from_user
-
-    if inviter_row:
-        inviter_id = inviter_row[0]
-
-        # Если идентификатор пригласившего совпадает с идентификатором приглашенного
-        if inviter_id == user.id:
-            response = "Вы не можете пригласить самого себя."
-        else:
-            # Начисление баланса пригласившему пользователю
-            cursor.execute("UPDATE users SET balance = balance + 1 WHERE tgid = %s", (str(inviter_id),))
-            cursor.execute("UPDATE invitations SET inviteduserid = %s WHERE token = %s ", (user.id, invite_token))
-            conn.commit()
-            response = f"Вы были приглашены пользователем {inviter_id}. Баланс начислен."
-    else:
-        response = "Пригласитель не найден."
-
-    bot.reply_to(message, response, reply_markup=create_keyboard())
+        # Запись нового пользователя в базу данных
+        cursor.execute("INSERT INTO users (tgid, username) VALUES (%s, %s)", (str(user_id), username))
+        conn.commit()
+        bot.send_message(user_id, f"Добро пожаловать, @{username}! Вы успешно зарегистрированы.")
 
 
 @bot.message_handler(commands=['balance'])
@@ -152,7 +140,6 @@ def process_withdrawal(message):
             balance = balance_row[0]
             if withdrawal_amount <= balance and withdrawal_amount >= 500:  # Добавлено ограничение до 500
                 # Отправка данных админскому боту
-                admin_user_id = "326646054"
                 admin_message = f"Пользователь {user_id} хочет вывести {withdrawal_amount}.\nТекущий баланс: {balance}"
                 send_admin_notification(admin_message)
 
@@ -197,4 +184,4 @@ def handle_commands(message):
     bot.reply_to(message, "Command received.")
 
 
-bot.infinity_polling()
+#bot.infinity_polling()
