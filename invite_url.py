@@ -9,16 +9,19 @@ class Channel:
         self.name: str = session_file_name
         self.chat_id: str or int = -1001962381384
 
-    def create_link(self):
+    def create_link(self) -> str:
         with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
-            return app.create_chat_invite_link(self.chat_id)
+            obj_link: pyrogram.types.ChatInviteLink = app.create_chat_invite_link(self.chat_id)
+            return obj_link.invite_link
 
-    def get_link_info(self, link: str):
+    def get_link_count_join(self, link: str) -> int:
         with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
-            return app.get_chat_invite_link(self.chat_id, link)
+            obj_link: pyrogram.types.ChatInviteLink = app.get_chat_invite_link(self.chat_id, link)
+            return obj_link.member_count
 
 
-info = Channel("rolakov").get_link_info('https://t.me/+KhNFXe6DwGEwZTIy')
-# new_link = Channel().create_link()
-
-print(1)
+# info = Channel("rolakov").get_link_count_join('https://t.me/+KhNFXe6DwGEwZTIy')
+# new_link = Channel('rolakov').create_link()
+#
+# print(info)
+# print(new_link)
