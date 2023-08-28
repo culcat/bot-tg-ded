@@ -18,7 +18,7 @@ class Channel:
             return app.get_chat_invite_link(self.chat_id, link)
 
 
-info = Channel().get_link_info('https://t.me/+KhNFXe6DwGEwZTIy')
+info = Channel("rolakov").get_link_info('https://t.me/+KhNFXe6DwGEwZTIy')
 # new_link = Channel().create_link()
 
 print(1)
