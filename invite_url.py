@@ -18,7 +18,7 @@ class Channel:
     async def get_link_count_join(self, link: str) -> int:
         async with pyrogram.Client(api_id=self.api_id, api_hash=self.api_hash, name=self.name) as app:
             obj_link: pyrogram.types.ChatInviteLink = await app.get_chat_invite_link(self.chat_id, link)
-            return obj_link.member_count
+            return obj_link.member_count if obj_link.member_count is not None else 0
 
 
 # info = asyncio.run(Channel("rolakov").get_link_count_join('https://t.me/+KhNFXe6DwGEwZTIy'))

@@ -5,10 +5,13 @@ import telebot
 import psycopg2
 from telebot import types
 from telebot.apihelper import create_chat_invite_link
+import asyncio
 
 conn = psycopg2.connect(dbname="tg", host="localhost", user="postgres", password="postgrespw", port="32770")
 cursor = conn.cursor()
 conn.autocommit = True
+
+
 def refresh_cursor():
     global cursor
     cursor.close()
@@ -19,7 +22,6 @@ cursor.execute("SELECT botkey FROM botsettings where botsettingid = 1")
 token_row = cursor.fetchone()
 token = str(token_row[0])
 bot = telebot.TeleBot(token)
-channel_id = '-1001962381384'
 cursor.execute("SELECT botkey FROM botsettings where botsettingid = 2")
 adminToken_row = cursor.fetchone()
 adminToken = str(adminToken_row[0])
@@ -28,90 +30,126 @@ adminUserId_row = cursor.fetchone()
 adminUserID = str(adminUserId_row[0])
 
 
-
 def create_keyboard():
+    # Create a keyboard with four buttons
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    button_invite = types.KeyboardButton('/invite')
-    button_balance = types.KeyboardButton('/balance')
-    button_withdraw = types.KeyboardButton('/withdraw')
-    keyboard.add(button_invite, button_balance, button_withdraw)
+
+    # Add buttons to the keyboard
+    button_invite = types.KeyboardButton('➕ Создать ссылку')
+    button_balance = types.KeyboardButton('💰 Мой баланс')
+    button_withdraw = types.KeyboardButton('💳 Вывoд')
+    button_refs = types.KeyboardButton('\U0001F465 Мои ссылки')
+    keyboard.add(button_invite, button_balance, button_withdraw, button_refs)
+
     return keyboard
-
-
-
-@bot.message_handler(commands=['invite'])
-def generate_invite_link(message):
-    user_id = message.from_user.id
-    invite_link = invite_url.Channel('aleksandrkrainukov').create_link()
-    # Запись информации о пригласившем пользователе в базу данных
-    cursor.execute("INSERT INTO referals (invitelink,idinviter ) VALUES (%s, %s)", invite_link,(str(user_id)))
-    conn.commit()
-
-    bot.send_message(user_id, f"Приглашение в канал: {invite_link}")
-
-
-
-
-
 
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
+    keyboard = create_keyboard()
+
     user_id = message.from_user.id
     username = message.from_user.username
     # Проверка, зарегистрирован ли пользователь уже
     cursor.execute("SELECT * FROM users WHERE tgid = %s", (str(user_id),))
     if cursor.fetchone():
-        bot.send_message(user_id, "Вы уже зарегистрированы.")
+        bot.send_message(user_id, "Вы уже зарегистрированы.", reply_markup=keyboard)
     else:
         # Запись нового пользователя в базу данных
-        cursor.execute("INSERT INTO users (tgid, username) VALUES (%s, %s)", (str(user_id), username))
+        cursor.execute("INSERT INTO users (tgid, username) VALUES (%s, %s)", (int(user_id), username))
         conn.commit()
-        bot.send_message(user_id, f"Добро пожаловать, @{username}! Вы успешно зарегистрированы.")
-
-
-@bot.message_handler(commands=['balance'])
+        bot.send_message(user_id, f"Добро пожаловать, @{username}! Вы успешно зарегистрированы.", reply_markup=keyboard)
+@bot.message_handler(content_types=['text'])
 def start_message(message):
-    user = message.from_user
-    user_id = user.id
-    user_username = user.username
-    cursor.execute("SELECT reward FROM rewards WHERE id =%s ", 1)
-    reward = cursor.fetchone()
-    cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
-    balance_row = cursor.fetchone()
-    cursor.execute("SELECT joinedusers FROM referals WHERE idinviter = %s", (str(user_id),))
-    invited_count =cursor.fetchone()
-    plus_balance = balance_row+invited_count*reward
-    cursor.execute("UPDATE users SET balance = %s WHERE tgid = %s", (plus_balance, str(user_id)))
+    if message.text.lower() == '💰 мой баланс':
+        print(message)
+        user = message.from_user
+        user_id = user.id
+        user_username = user.username
+        cursor.execute("SELECT invitelink FROM referals2 WHERE idinviter = %s", (int(user_id),))
+        count = 0
 
+        referal_url = cursor.fetchone()
+        if referal_url is not None:
+            count = asyncio.run(invite_url.Channel("aleksandrkrainukov").get_link_count_join(referal_url[0]))
 
+        cursor.execute("SELECT reward FROM rewards WHERE id =%s ", '1')
+        reward = cursor.fetchone()
+        cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
+        balance_row = cursor.fetchone()
+        cursor.execute("UPDATE referals2 SET joinedusers = %s WHERE idinviter = %s", (count, (str(user_id))))
+        cursor.execute("SELECT joinedusers FROM referals2 WHERE idinviter = %s", (str(user_id),))
+        invited_count = cursor.fetchone()
+        rewards = reward[0]
+        invited_count = 0
+        plus_balance = invited_count
+        if invited_count is not None:
+            pluss = int(invited_count) * int(rewards) + int(balance_row[0])
+        cursor.execute("UPDATE users SET balance = %s WHERE tgid = %s", (int(pluss), str(user_id)))
+        cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
+        balance_upd = cursor.fetchone()
+        balance_updd = str(balance_upd)
 
-    if balance_row:
-        balance = balance_row[0]
-        response = f"Баланс: {balance}\n"
-    else:
-        response = "Пользователь не найден в базе данных."
-
-    bot.reply_to(message, response)
-
-
-@bot.message_handler(commands=['withdraw'])
-def withdraw_request(message):
-    user = message.from_user
-    user_id = user.id
-    cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
-
-    balance_row = cursor.fetchone()
-
-    if balance_row:
-        balance = balance_row[0]
-        if balance >= 500:
-            bot.send_message(user_id, "Введите сумму для вывода:")
-            bot.register_next_step_handler(message, process_withdrawal)
+        if balance_upd:
+            balance = balance_upd[0]
+            response = f"Баланс: {balance}\n"
         else:
-            bot.reply_to(message, "У вас недостаточно средств для вывода баланса.")
-    else:
-        bot.reply_to(message, "Пользователь не найден в базе данных.")
+            response = "Пользователь не найден в базе данных."
+
+        bot.reply_to(message, response)
+    elif message.text.lower() == '👥 мои ссылки':
+        user_id = message.from_user.id
+        cursor.execute("SELECT invitelink FROM referals2 WHERE idinviter = %s", (int(user_id),))
+        count = 0
+
+        referal_url = cursor.fetchone()
+        if referal_url is not None:
+            count = asyncio.run(invite_url.Channel("aleksandrkrainukoчv").get_link_count_join(referal_url[0]))
+
+        cursor.execute("UPDATE referals2 SET joinedusers = %s WHERE idinviter = %s", (count, (str(user_id))))
+
+        cursor.execute("SELECT invitelink  FROM referals2 WHERE idinviter = %s", (str(user_id),))
+        link = cursor.fetchall()
+
+        cursor.execute("SELECT joinedusers  FROM referals2 WHERE idinviter = %s", (str(user_id),))
+        usrs = cursor.fetchall()
+
+        message = ""
+        for i, link_item in enumerate(link):
+            usr = usrs[i] if usrs else None
+
+            # Unpack the link and usr items
+            link_str, usr_str = link_item[0], usr[0] if usr else "None"
+
+            message += f'🔗 {link_str} | {usr_str} 👥 \n'
+
+        bot.send_message(user_id, message)
+    elif message.text.lower() == '➕ создать ссылку':
+        user_id = message.from_user.id
+        invite_link = asyncio.run(invite_url.Channel('aleksandrkrainukov').create_link())
+        # Запись информации о пригласившем пользователе в базу данных
+        cursor.execute("INSERT INTO referals2 (invitelink, idinviter) VALUES (%s, %s)", (invite_link, int(user_id)))
+        conn.commit()
+
+        bot.send_message(user_id, f"Приглашение в канал: {invite_link}")
+    elif message.text.lower() == '💳 вывoд':
+            user = message.from_user
+            user_id = user.id
+            cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
+
+            balance_row = cursor.fetchone()
+
+            if balance_row:
+                balance = balance_row[0]
+                if balance >= 500:
+                    bot.send_message(user_id, "Введите сумму для вывода:")
+                    bot.register_next_step_handler(message, process_withdrawal)
+                else:
+                    bot.reply_to(message, "У вас недостаточно средств для вывода баланса.")
+            else:
+                bot.reply_to(message, "Пользователь не найден в базе данных.")
+
+
 
 
 @bot.message_handler(func=lambda message: True)
@@ -159,7 +197,7 @@ refresh_interval = 1800
 last_refresh_time = time.time()
 
 
-@bot.message_handler(commands=['start', 'invite', 'balance', 'withdraw'])
+@bot.message_handler(commands=['start', 'invite', 'balance', 'withdraw', 'button_refs'])
 def handle_commands(message):
     global last_refresh_time
 
@@ -171,4 +209,4 @@ def handle_commands(message):
     bot.reply_to(message, "Command received.")
 
 
-bot.infinity_polling()
+bot.polling(True)
