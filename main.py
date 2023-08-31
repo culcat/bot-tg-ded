@@ -1,16 +1,15 @@
 import secrets
+import sqlite3
 import time
 import invite_url
 import telebot
 import psycopg2
 from telebot import types
-from telebot.apihelper import create_chat_invite_link
 import asyncio
 
-conn = psycopg2.connect(dbname="tg", host="localhost", user="postgres", password="postgrespw", port="32769")
+conn = sqlite3.connect("botdb.db")
 cursor = conn.cursor()
-conn.autocommit = True
-
+conn.row_factory = sqlite3.Row
 
 def refresh_cursor():
     global cursor
@@ -61,7 +60,7 @@ def handle_start(message):
         bot.send_message(user_id, f"Добро пожаловать, @{username}! Вы успешно зарегистрированы.", reply_markup=keyboard)
 
 def get_user_invite_count(user_id, cursor):
-    cursor.execute("SELECT COUNT(*) FROM referals2 WHERE idinviter = %s", (user_id,))
+    cursor.execute("SELECT COUNT(*) FROM referals WHERE idinviter = %s", (user_id,))
     count = cursor.fetchone()[0]
     return count
 @bot.message_handler(content_types=['text'])
@@ -71,7 +70,7 @@ def start_message(message):
         user = message.from_user
         user_id = user.id
         user_username = user.username
-        cursor.execute("SELECT invitelink FROM referals2 WHERE idinviter = %s", (int(user_id),))
+        cursor.execute("SELECT invitelink FROM referals WHERE idinviter = %s", (int(user_id),))
         count = 0
 
         referal_url = cursor.fetchone()
@@ -82,8 +81,8 @@ def start_message(message):
         reward = cursor.fetchone()
         cursor.execute("SELECT balance FROM users WHERE tgid = %s", (str(user_id),))
         balance_row = cursor.fetchone()
-        cursor.execute("UPDATE referals2 SET joinedusers = %s WHERE idinviter = %s", (count, (str(user_id))))
-        cursor.execute("SELECT joinedusers FROM referals2 WHERE idinviter = %s", (str(user_id),))
+        cursor.execute("UPDATE referals SET joinedusers = %s WHERE idinviter = %s", (count, (str(user_id))))
+        cursor.execute("SELECT joinedusers FROM referals WHERE idinviter = %s", (str(user_id),))
         invited_count = cursor.fetchone()
         rewards = reward[0]
         invited_count = 0
@@ -104,10 +103,10 @@ def start_message(message):
         bot.reply_to(message, response)
     elif message.text.lower() == '👥 мои ссылки':
         user_id = message.from_user.id
-        cursor.execute("SELECT invitelink FROM referals2 WHERE idinviter = %s", (int(user_id),))
+        cursor.execute("SELECT invitelink FROM referals WHERE idinviter = %s", (int(user_id),))
         count = 0
         referal_url = cursor.fetchall()
-        cursor.execute("SELECT * from referals2 WHERE idinviter = %s", (int(user_id),))
+        cursor.execute("SELECT * from referals WHERE idinviter = %s", (int(user_id),))
         usr = cursor.fetchone()
         if usr is None:
             bot.send_message(user_id, "У вас нету ссылок")
@@ -115,12 +114,12 @@ def start_message(message):
         if referal_url is not None:
             for i in referal_url:
                 count = asyncio.run(invite_url.Channel("aleksandrkrainukoчv").get_link_count_join(i[0]))
-                cursor.execute("UPDATE referals2 SET joinedusers = %s WHERE invitelink = %s", (count, i[0]))
+                cursor.execute("UPDATE referals SET joinedusers = %s WHERE invitelink = %s", (count, i[0]))
 
-        cursor.execute("SELECT invitelink  FROM referals2 WHERE idinviter = %s", (str(user_id),))
+        cursor.execute("SELECT invitelink  FROM referals WHERE idinviter = %s", (str(user_id),))
         link = cursor.fetchall()
 
-        cursor.execute("SELECT joinedusers  FROM referals2 WHERE idinviter = %s", (str(user_id),))
+        cursor.execute("SELECT joinedusers  FROM referals WHERE idinviter = %s", (str(user_id),))
         usrs = cursor.fetchall()
 
         message = ""
@@ -139,7 +138,7 @@ def start_message(message):
         invite_count = get_user_invite_count(user_id, cursor)
         if invite_count < 3:
             invite_link = asyncio.run(invite_url.Channel('aleksandrkrainukov').create_link())
-            cursor.execute("INSERT INTO referals2 (invitelink, idinviter) VALUES (%s, %s)", (invite_link, int(user_id)))
+            cursor.execute("INSERT INTO referals (invitelink, idinviter) VALUES (%s, %s)", (invite_link, int(user_id)))
             conn.commit()
             bot.send_message(user_id, f"Приглашение в канал: {invite_link}")
         else:
